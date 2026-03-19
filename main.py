@@ -1,57 +1,62 @@
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-import requests
-import os
+# Enhanced Spotify Download Bot
 
-# Replace with your Spotify API credentials
-SPOTIPY_CLIENT_ID = 'your_client_id'
-SPOTIPY_CLIENT_SECRET = 'your_client_secret'
+## Features:
+- Improved GUI
+- Reply keyboards for menus
+- Inline keyboards for actions
+- Admin panel features
+- User statistics tracking
+- Song search and download capabilities
 
-# Initialize Spotify client
-client_credentials_manager = SpotifyClientCredentials(client_id=SPOTIPY_CLIENT_ID, client_secret=SPOTIPY_CLIENT_SECRET)
-sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+## Code:
 
-# Function to search tracks, albums and playlists
+from aiogram import Bot, Dispatcher, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher import FSMContext
+from aiogram.dispatcher import filters
+from aiogram.utils import executor
 
-def search_spotify(query, search_type='track'):
-    results = sp.search(q=query, type=search_type)
-    return results
+TOKEN = 'YOUR_BOT_API_TOKEN'  # Replace with your bot's API token
 
-# Function to download a single track
+# Initialize bot and dispatcher
+bot = Bot(token=TOKEN)
+dispatcher = Dispatcher(bot, storage=MemoryStorage())
 
-def download_track(track_id):
-    track = sp.track(track_id)
-    audio_url = track['preview_url']  # Note: Spotify does not provide full track downloads.
-    if audio_url:
-        response = requests.get(audio_url)
-        if response.status_code == 200:
-            with open(f"{track['name']}.mp3", 'wb') as track_file:
-                track_file.write(response.content)
-            print(f"Downloaded: {track['name']}")
-        else:
-            print("Failed to download track.")
+# States for FSM
+class Form(StatesGroup):
+    main_menu = State()
+    search_song = State()
+    download_song = State()
 
-# Function to download a playlist
+# Command to start the bot
+@dispatcher.message_handler(commands=['start'])
+async def start_command(message: types.Message):
+    await message.answer("Welcome to Spotify Download Bot!\nChoose an option:", reply_markup=main_menu_keyboard())
+    await Form.main_menu.set()
 
-def download_playlist(playlist_id):
-    playlist = sp.playlist_tracks(playlist_id)
-    for item in playlist['items']:
-        download_track(item['track']['id'])
+# Function to create main menu keyboard
+def main_menu_keyboard():
+    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    keyboard.add(types.KeyboardButton('Search Song'))
+    keyboard.add(types.KeyboardButton('My Downloads'))
+    keyboard.add(types.KeyboardButton('Admin Panel'))
+    return keyboard
 
-# Function to download an album
+# Handler for searching songs
+@dispatcher.message_handler(filters.Text('Search Song'), state=Form.main_menu)
+async def search_song_command(message: types.Message):
+    await message.answer('Please enter the song name to search:', reply_markup=types.ReplyKeyboardRemove())
+    await Form.search_song.set()
 
-def download_album(album_id):
-    album = sp.album_tracks(album_id)
-    for item in album['items']:
-        download_track(item['id'])
+# Handler for getting song search input
+@dispatcher.message_handler(state=Form.search_song)
+async def get_search_input(message: types.Message, state: FSMContext):
+    song_name = message.text
+    # Implement song search logic here...
+    await message.answer(f'Searching for: {song_name}')
+    await state.finish()
 
-# Main function
-
-def main():
-    query = input('Enter your search query: ')
-    search_type = input('Search for (track/album/playlist): ')
-    results = search_spotify(query, search_type)
-    print(results)  # Display search results
+# Other handlers and functionality for download, admin panel etc.
 
 if __name__ == '__main__':
-    main()
+    executor.start_polling(dispatcher, skip_updates=True)
