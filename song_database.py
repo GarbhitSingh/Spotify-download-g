@@ -1,30 +1,38 @@
-class SongDatabase:
-    def __init__(self):
-        # Initialize the song database as an empty dictionary
-        self.songs = {}
-        # Initialize user search history as an empty list
-        self.user_search_history = []
+import sqlite3
 
-    def add_song(self, title, artist, genre):
-        # Method to add a new song to the database
-        self.songs[title] = {'artist': artist, 'genre': genre}
+class SongDatabase:
+    def __init__(self, db_name='songs.db'):
+        self.connection = sqlite3.connect(db_name)
+        self.cursor = self.connection.cursor()
+        self.create_tables()
+
+    def create_tables(self):
+        self.cursor.execute('''CREATE TABLE IF NOT EXISTS songs (
+            id INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            artist TEXT NOT NULL,
+            album TEXT,
+            year INTEGER,
+            popularity INTEGER
+        )''')
+
+    def add_song(self, title, artist, album, year, popularity):
+        self.cursor.execute('''INSERT INTO songs (title, artist, album, year, popularity)
+                             VALUES (?, ?, ?, ?, ?)''',
+                             (title, artist, album, year, popularity))
+        self.connection.commit()
 
     def search_song(self, title):
-        # Method to search for a song by title
-        if title in self.songs:
-            song_info = self.songs[title]
-            self.user_search_history.append(title)  # Log the search
-            return song_info
-        else:
-            return None
+        self.cursor.execute('''SELECT * FROM songs WHERE title LIKE ?''', ('%' + title + '%',))
+        return self.cursor.fetchall()
 
-    def get_search_history(self):
-        # Method to get the user search history
-        return self.user_search_history
+    def update_song_popularity(self, song_id, popularity):
+        self.cursor.execute('''UPDATE songs SET popularity = ? WHERE id = ?''', (popularity, song_id))
+        self.connection.commit()
 
-# Example usage
-if __name__ == '__main__':
-    database = SongDatabase()
-    database.add_song('Shape of You', 'Ed Sheeran', 'Pop')
-    print(database.search_song('Shape of You'))  # Should return song details
-    print(database.get_search_history())  # Should show the search history
+    def get_statistics(self):
+        self.cursor.execute('''SELECT COUNT(*), AVG(popularity) FROM songs''')
+        return self.cursor.fetchone()
+
+    def close(self):
+        self.connection.close()
