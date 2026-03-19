@@ -1,58 +1,65 @@
-import requests
 import sqlite3
-import random
+import requests
+from random import choice
 
-class ProxyManager:
-    def __init__(self, db_name='proxies.db'):
-        self.db_name = db_name
-        self.create_database()
+# SQLite database setup
+DB_NAME = 'proxy_manager.db'
 
-    def create_database(self):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS proxies (id INTEGER PRIMARY KEY, proxy TEXT UNIQUE, is_working INTEGER)''')
-        conn.commit()
-        conn.close()
+def create_connection():
+    connection = sqlite3.connect(DB_NAME)
+    return connection
 
-    def add_proxy(self, proxy):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        try:
-            c.execute('INSERT INTO proxies (proxy, is_working) VALUES (?, ?)', (proxy, 1))
-            conn.commit()
-        except sqlite3.IntegrityError:
-            pass  # Proxy already exists
-        finally:
-            conn.close()
+# Create table
+def create_table():
+    connection = create_connection()
+    with connection:
+        cursor = connection.cursor()
+        cursor.execute('''CREATE TABLE IF NOT EXISTS proxies (
+                              id INTEGER PRIMARY KEY,
+                              proxy TEXT NOT NULL UNIQUE,
+                              verified INTEGER NOT NULL)
+                          ''')
 
-    def verify_proxies(self):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute('SELECT proxy FROM proxies WHERE is_working = 1')
-        proxies = c.fetchall()
-        for proxy in proxies:
-            if self.test_proxy(proxy[0]):
-                print(f'{proxy[0]} is working.')
-            else:
-                print(f'{proxy[0]} is not working. Marking as not working.')
-                c.execute('UPDATE proxies SET is_working = 0 WHERE proxy = ?', (proxy[0],))
-        conn.commit()
-        conn.close()
+# Add proxy
+def add_proxy(proxy):
+    connection = create_connection()
+    with connection:
+        cursor = connection.cursor()
+        cursor.execute('INSERT OR IGNORE INTO proxies (proxy, verified) VALUES (?, ?)', (proxy, 0))
 
-    def test_proxy(self, proxy):
-        try:
-            response = requests.get('http://example.com', proxies={'http': proxy, 'https': proxy}, timeout=5)
-            return response.status_code == 200
-        except:
-            return False
+# Verify proxy
+def verify_proxy(proxy):
+    try:
+        response = requests.get('http://httpbin.org/ip', proxies={'http': proxy, 'https': proxy}, timeout=5)
+        return response.status_code == 200
+    except:
+        return False
 
-    def get_random_proxy(self):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute('SELECT proxy FROM proxies WHERE is_working = 1')
-        proxies = c.fetchall()
-        conn.close()
-        return random.choice(proxies)[0] if proxies else None
+# Filter verified proxies
+def filter_verified_proxies():
+    connection = create_connection()
+    with connection:
+        cursor = connection.cursor()
+        cursor.execute('SELECT proxy FROM proxies WHERE verified = 1')
+        return [row[0] for row in cursor.fetchall()]
 
-    def rotate_proxy(self):
-        return self.get_random_proxy()
+# Rotate proxy
+def rotate_proxy():
+    verified_proxies = filter_verified_proxies()
+    if verified_proxies:
+        return choice(verified_proxies)
+    else:
+        return None
+
+# Main functionality
+if __name__ == '__main__':
+    create_table()
+    # Example proxies
+    proxies_list = ['http://123.45.67.89:8080', 'http://98.76.54.32:9000']
+    for proxy in proxies_list:
+        add_proxy(proxy)
+        if verify_proxy(proxy):
+            with create_connection() as conn:
+                conn.execute('UPDATE proxies SET verified = 1 WHERE proxy = ?' , (proxy,))
+        
+    print('Rotated to proxy:', rotate_proxy())
